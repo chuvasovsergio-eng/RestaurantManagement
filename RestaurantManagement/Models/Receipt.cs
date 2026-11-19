@@ -3,6 +3,10 @@
 public class Receipt
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid? TableId { get; set; }
+    public int TableNumber { get; set; }
+    public Guid? WaiterId { get; set; }
+    public string WaiterName { get; set; } = "Не вказано";
     public DateTime OpenedAt { get; set; } = DateTime.Now;
     public DateTime? ClosedAt { get; set; }
     public bool IsOpen { get; set; } = true;

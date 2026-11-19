@@ -6,11 +6,19 @@ namespace RestaurantManagement.Presentation;
 public class ConsoleUI
 {
     private readonly MenuService _menuService;
+    private readonly TableService _tableService;
+    private readonly WaiterService _waiterService;
     private readonly ReceiptService _receiptService;
 
-    public ConsoleUI(MenuService menuService, ReceiptService receiptService)
+    public ConsoleUI(
+        MenuService menuService,
+        TableService tableService,
+        WaiterService waiterService,
+        ReceiptService receiptService)
     {
         _menuService = menuService;
+        _tableService = tableService;
+        _waiterService = waiterService;
         _receiptService = receiptService;
     }
 
@@ -18,14 +26,17 @@ public class ConsoleUI
     {
         while (true)
         {
-            Console.WriteLine("\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ ХАРЧУВАННЯ (Етап 2) ===");
+            Console.WriteLine("\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ ХАРЧУВАННЯ (Етап 3) ===");
             Console.WriteLine("1. Управління меню (CRUD)");
-            Console.WriteLine("2. Відкрити новий чек");
-            Console.WriteLine("3. Додати замовлення у відкритий чек");
-            Console.WriteLine("4. Змінити статус замовлення");
-            Console.WriteLine("5. Закрити чек");
-            Console.WriteLine("6. Переглянути всі чеки та історію статусів");
-            Console.WriteLine("7. Розрахувати виручку за день");
+            Console.WriteLine("2. Управління столиками");
+            Console.WriteLine("3. Управління офіціантами");
+            Console.WriteLine("4. Відкрити новий чек (за столиком та офіціантом)");
+            Console.WriteLine("5. Додати замовлення у відкритий чек");
+            Console.WriteLine("6. Змінити статус замовлення");
+            Console.WriteLine("7. Пересадити гостей на інший столик");
+            Console.WriteLine("8. Закрити чек");
+            Console.WriteLine("9. Переглянути всі чеки та історію статусів");
+            Console.WriteLine("10. Звіт по виручці (загальна та по офіціантах)");
             Console.WriteLine("0. Вихід");
             Console.Write("Оберіть дію: ");
 
@@ -39,22 +50,31 @@ public class ConsoleUI
                         ManageMenu();
                         break;
                     case "2":
-                        OpenReceiptUI();
+                        ManageTables();
                         break;
                     case "3":
-                        AddOrderToReceiptUI();
+                        ManageWaiters();
                         break;
                     case "4":
-                        ChangeOrderStatusUI();
+                        OpenReceiptUI();
                         break;
                     case "5":
-                        CloseReceiptUI();
+                        AddOrderToReceiptUI();
                         break;
                     case "6":
-                        ShowReceipts();
+                        ChangeOrderStatusUI();
                         break;
                     case "7":
-                        ShowDailyRevenueUI();
+                        ChangeReceiptTableUI();
+                        break;
+                    case "8":
+                        CloseReceiptUI();
+                        break;
+                    case "9":
+                        ShowReceipts();
+                        break;
+                    case "10":
+                        ShowRevenueReportUI();
                         break;
                     case "0":
                         return;
@@ -131,6 +151,99 @@ public class ConsoleUI
         }
     }
 
+    private void ManageTables()
+    {
+        while (true)
+        {
+            Console.WriteLine("\n--- УПРАВЛІННЯ СТОЛИКАМИ ---");
+            Console.WriteLine("1. Показати всі столики");
+            Console.WriteLine("2. Додати столик");
+            Console.WriteLine("0. Назад");
+            Console.Write("Оберіть дію: ");
+
+            string? choice = Console.ReadLine();
+            switch (choice)
+            {
+                case "1":
+                    var tables = _tableService.GetAll();
+                    if (tables.Count == 0)
+                    {
+                        Console.WriteLine("Столиків поки немає.");
+                        break;
+                    }
+                    Console.WriteLine("\nСписок столиків:");
+                    foreach (var t in tables)
+                    {
+                        string status = t.IsOccupied ? "Зайнятий" : "Вільний";
+                        Console.WriteLine($"- Столик №{t.Number} (місць: {t.Capacity}) — [{status}]");
+                    }
+                    break;
+                case "2":
+                    Console.Write("Номер столика: ");
+                    if (!int.TryParse(Console.ReadLine(), out int number))
+                    {
+                        Console.WriteLine("Некоректний номер.");
+                        break;
+                    }
+                    Console.Write("Кількість місць: ");
+                    if (!int.TryParse(Console.ReadLine(), out int capacity))
+                    {
+                        Console.WriteLine("Некоректна кількість місць.");
+                        break;
+                    }
+                    _tableService.AddTable(number, capacity);
+                    Console.WriteLine($"Столик №{number} додано.");
+                    break;
+                case "0":
+                    return;
+                default:
+                    Console.WriteLine("Невірний пункт.");
+                    break;
+            }
+        }
+    }
+
+    private void ManageWaiters()
+    {
+        while (true)
+        {
+            Console.WriteLine("\n--- УПРАВЛІННЯ ОФІЦІАНТАМИ ---");
+            Console.WriteLine("1. Показати список офіціантів");
+            Console.WriteLine("2. Додати офіціанта");
+            Console.WriteLine("0. Назад");
+            Console.Write("Оберіть дію: ");
+
+            string? choice = Console.ReadLine();
+            switch (choice)
+            {
+                case "1":
+                    var waiters = _waiterService.GetAll();
+                    if (waiters.Count == 0)
+                    {
+                        Console.WriteLine("Офіціантів поки немає.");
+                        break;
+                    }
+                    Console.WriteLine("\nСписок офіціантів:");
+                    for (int i = 0; i < waiters.Count; i++)
+                    {
+                        Console.WriteLine($"{i + 1}. {waiters[i].FullName}");
+                    }
+                    break;
+                case "2":
+                    Console.Write("ПІБ офіціанта: ");
+                    string fullName = Console.ReadLine() ?? "";
+                    _waiterService.AddWaiter(fullName);
+                    Console.WriteLine("Офіціанта додано.");
+                    break;
+                case "0":
+                    return;
+                default:
+                    Console.WriteLine("Невірний пункт.");
+                    break;
+            }
+        }
+    }
+
     private void ShowMenuItems()
     {
         var items = _menuService.GetAll();
@@ -167,6 +280,56 @@ public class ConsoleUI
         return items[index - 1];
     }
 
+    private Table? SelectFreeTable()
+    {
+        var freeTables = _tableService.GetFreeTables();
+        if (freeTables.Count == 0)
+        {
+            Console.WriteLine("Немає вільних столиків. Додайте столик або закрийте один із чеків.");
+            return null;
+        }
+
+        Console.WriteLine("\nВільні столики:");
+        for (int i = 0; i < freeTables.Count; i++)
+        {
+            Console.WriteLine($"{i + 1}. Столик №{freeTables[i].Number} (місць: {freeTables[i].Capacity})");
+        }
+
+        Console.Write("Оберіть номер зі списку: ");
+        if (!int.TryParse(Console.ReadLine(), out int index) || index < 1 || index > freeTables.Count)
+        {
+            Console.WriteLine("Невірний вибір.");
+            return null;
+        }
+
+        return freeTables[index - 1];
+    }
+
+    private Waiter? SelectWaiter()
+    {
+        var waiters = _waiterService.GetAll();
+        if (waiters.Count == 0)
+        {
+            Console.WriteLine("Список офіціантів порожній. Спочатку додайте офіціанта.");
+            return null;
+        }
+
+        Console.WriteLine("\nОфіціанти:");
+        for (int i = 0; i < waiters.Count; i++)
+        {
+            Console.WriteLine($"{i + 1}. {waiters[i].FullName}");
+        }
+
+        Console.Write("Оберіть офіціанта: ");
+        if (!int.TryParse(Console.ReadLine(), out int index) || index < 1 || index > waiters.Count)
+        {
+            Console.WriteLine("Невірний вибір.");
+            return null;
+        }
+
+        return waiters[index - 1];
+    }
+
     private Receipt? SelectOpenReceipt()
     {
         var openReceipts = _receiptService.GetOpenReceipts();
@@ -179,7 +342,8 @@ public class ConsoleUI
         Console.WriteLine("\nВідкриті чеки:");
         for (int i = 0; i < openReceipts.Count; i++)
         {
-            Console.WriteLine($"{i + 1}. ID: {openReceipts[i].Id} (відкрито {openReceipts[i].OpenedAt:HH:mm:ss}, сума: {openReceipts[i].TotalAmount:F2} грн)");
+            var r = openReceipts[i];
+            Console.WriteLine($"{i + 1}. Столик №{r.TableNumber} | Офіціант: {r.WaiterName} | Сума: {r.TotalAmount:F2} грн (ID: {r.Id})");
         }
 
         Console.Write("Оберіть номер чеку: ");
@@ -194,8 +358,27 @@ public class ConsoleUI
 
     private void OpenReceiptUI()
     {
-        var receipt = _receiptService.OpenReceipt();
-        Console.WriteLine($"Відкрито новий чек! ID: {receipt.Id} | Час: {receipt.OpenedAt:dd.MM.yyyy HH:mm:ss}");
+        var table = SelectFreeTable();
+        if (table == null) return;
+
+        var waiter = SelectWaiter();
+        if (waiter == null) return;
+
+        var receipt = _receiptService.OpenReceipt(table, waiter);
+        Console.WriteLine($"Відкрито чек! Столик №{receipt.TableNumber} | Офіціант: {receipt.WaiterName} | ID: {receipt.Id}");
+    }
+
+    private void ChangeReceiptTableUI()
+    {
+        var receipt = SelectOpenReceipt();
+        if (receipt == null) return;
+
+        Console.WriteLine($"Поточний столик: №{receipt.TableNumber}. Оберіть новий вільний столик:");
+        var newTable = SelectFreeTable();
+        if (newTable == null) return;
+
+        _receiptService.ChangeReceiptTable(receipt.Id, newTable);
+        Console.WriteLine($"Чек перенесено на столик №{newTable.Number}.");
     }
 
     private void AddOrderToReceiptUI()
@@ -215,7 +398,7 @@ public class ConsoleUI
 
         if (_receiptService.AddOrderToReceipt(selectedReceipt.Id, selectedItem, quantity))
         {
-            Console.WriteLine($"Додано: {selectedItem.Name} x{quantity} у чек {selectedReceipt.Id}.");
+            Console.WriteLine($"Додано: {selectedItem.Name} x{quantity} у чек (Столик №{selectedReceipt.TableNumber}).");
         }
     }
 
@@ -276,7 +459,7 @@ public class ConsoleUI
         if (selectedReceipt == null) return;
 
         _receiptService.CloseReceipt(selectedReceipt.Id);
-        Console.WriteLine($"Чек {selectedReceipt.Id} успішно закрито! Підсумкова сума: {selectedReceipt.TotalAmount:F2} грн.");
+        Console.WriteLine($"Чек (Столик №{selectedReceipt.TableNumber}) закрито! Підсумкова сума: {selectedReceipt.TotalAmount:F2} грн. Столик знову вільний.");
     }
 
     private void ShowReceipts()
@@ -295,7 +478,8 @@ public class ConsoleUI
                 ? "Відкритий"
                 : $"Закритий ({r.ClosedAt:dd.MM.yyyy HH:mm:ss})";
 
-            Console.WriteLine($"\nЧек ID: {r.Id} | Статус: {status} | Відкрито: {r.OpenedAt:dd.MM.yyyy HH:mm:ss}");
+            Console.WriteLine($"\nЧек ID: {r.Id} | Столик №{r.TableNumber} | Офіціант: {r.WaiterName}");
+            Console.WriteLine($"Статус: {status} | Відкрито: {r.OpenedAt:dd.MM.yyyy HH:mm:ss}");
             if (r.Orders.Count == 0)
             {
                 Console.WriteLine("  (Замовлень поки немає)");
@@ -315,7 +499,7 @@ public class ConsoleUI
         }
     }
 
-    private void ShowDailyRevenueUI()
+    private void ShowRevenueReportUI()
     {
         Console.Write("Введіть дату у форматі дд.мм.рррр (або натисніть Enter для сьогоднішньої дати): ");
         string? input = Console.ReadLine();
@@ -331,8 +515,20 @@ public class ConsoleUI
             return;
         }
 
-        decimal revenue = _receiptService.CalculateDailyRevenue(targetDate);
-        Console.WriteLine($"Виручка за {targetDate:dd.MM.yyyy} (по закритих чеках): {revenue:F2} грн");
+        decimal totalRevenue = _receiptService.CalculateDailyRevenue(targetDate);
+        Console.WriteLine($"\n=== ЗВІТ ЗА {targetDate:dd.MM.yyyy} ===");
+        Console.WriteLine($"Загальна виручка закладу: {totalRevenue:F2} грн");
+
+        var waiters = _waiterService.GetAll();
+        if (waiters.Count > 0)
+        {
+            Console.WriteLine("\nСтатистика по офіціантах:");
+            foreach (var w in waiters)
+            {
+                var (closedCount, revenue) = _receiptService.GetWaiterStats(w.Id, targetDate);
+                Console.WriteLine($"- {w.FullName}: закрито чеків — {closedCount}, виручка — {revenue:F2} грн");
+            }
+        }
     }
 
     private static string FormatStatus(OrderStatus status) => status switch
