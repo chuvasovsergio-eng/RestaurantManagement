@@ -31,8 +31,11 @@ public class ReceiptService
     public bool AddOrderToReceipt(Guid receiptId, MenuItem menuItem, int quantity)
     {
         var receipt = GetById(receiptId);
-        if (receipt == null || !receipt.IsOpen)
-            return false;
+        if (receipt == null)
+            throw new ArgumentException("Чек не знайдено.");
+
+        if (!receipt.IsOpen)
+            throw new InvalidOperationException("Неможливо додати замовлення у закритий чек.");
 
         var order = new Order
         {
@@ -48,5 +51,32 @@ public class ReceiptService
         receipt.Orders.Add(order);
         _storage.Save(_receipts);
         return true;
+    }
+
+    public void ChangeOrderStatus(Guid receiptId, Guid orderId, OrderStatus newStatus)
+    {
+        var receipt = GetById(receiptId) ?? throw new ArgumentException("Чек не знайдено.");
+        if (!receipt.IsOpen)
+            throw new InvalidOperationException("Неможливо змінювати замовлення у закритому чеку.");
+
+        var order = receipt.Orders.FirstOrDefault(o => o.Id == orderId)
+            ?? throw new ArgumentException("Замовлення не знайдено.");
+
+        order.ChangeStatus(newStatus);
+        _storage.Save(_receipts);
+    }
+
+    public void CloseReceipt(Guid receiptId)
+    {
+        var receipt = GetById(receiptId) ?? throw new ArgumentException("Чек не знайдено.");
+        receipt.Close();
+        _storage.Save(_receipts);
+    }
+
+    public decimal CalculateDailyRevenue(DateTime date)
+    {
+        return _receipts
+            .Where(r => !r.IsOpen && r.ClosedAt.HasValue && r.ClosedAt.Value.Date == date.Date)
+            .Sum(r => r.TotalAmount);
     }
 }

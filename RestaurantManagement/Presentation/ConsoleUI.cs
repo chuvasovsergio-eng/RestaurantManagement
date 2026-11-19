@@ -18,11 +18,14 @@ public class ConsoleUI
     {
         while (true)
         {
-            Console.WriteLine("\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ ХАРЧУВАННЯ (Етап 1) ===");
+            Console.WriteLine("\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ ХАРЧУВАННЯ (Етап 2) ===");
             Console.WriteLine("1. Управління меню (CRUD)");
             Console.WriteLine("2. Відкрити новий чек");
             Console.WriteLine("3. Додати замовлення у відкритий чек");
-            Console.WriteLine("4. Переглянути всі чеки");
+            Console.WriteLine("4. Змінити статус замовлення");
+            Console.WriteLine("5. Закрити чек");
+            Console.WriteLine("6. Переглянути всі чеки та історію статусів");
+            Console.WriteLine("7. Розрахувати виручку за день");
             Console.WriteLine("0. Вихід");
             Console.Write("Оберіть дію: ");
 
@@ -42,7 +45,16 @@ public class ConsoleUI
                         AddOrderToReceiptUI();
                         break;
                     case "4":
+                        ChangeOrderStatusUI();
+                        break;
+                    case "5":
+                        CloseReceiptUI();
+                        break;
+                    case "6":
                         ShowReceipts();
+                        break;
+                    case "7":
+                        ShowDailyRevenueUI();
                         break;
                     case "0":
                         return;
@@ -155,19 +167,13 @@ public class ConsoleUI
         return items[index - 1];
     }
 
-    private void OpenReceiptUI()
-    {
-        var receipt = _receiptService.OpenReceipt();
-        Console.WriteLine($"Відкрито новий чек! ID: {receipt.Id} | Час: {receipt.OpenedAt:dd.MM.yyyy HH:mm:ss}");
-    }
-
-    private void AddOrderToReceiptUI()
+    private Receipt? SelectOpenReceipt()
     {
         var openReceipts = _receiptService.GetOpenReceipts();
         if (openReceipts.Count == 0)
         {
-            Console.WriteLine("Немає відкритих чеків. Спочатку відкрийте чек.");
-            return;
+            Console.WriteLine("Немає відкритих чеків.");
+            return null;
         }
 
         Console.WriteLine("\nВідкриті чеки:");
@@ -180,10 +186,23 @@ public class ConsoleUI
         if (!int.TryParse(Console.ReadLine(), out int receiptIndex) || receiptIndex < 1 || receiptIndex > openReceipts.Count)
         {
             Console.WriteLine("Невірний номер чеку.");
-            return;
+            return null;
         }
 
-        var selectedReceipt = openReceipts[receiptIndex - 1];
+        return openReceipts[receiptIndex - 1];
+    }
+
+    private void OpenReceiptUI()
+    {
+        var receipt = _receiptService.OpenReceipt();
+        Console.WriteLine($"Відкрито новий чек! ID: {receipt.Id} | Час: {receipt.OpenedAt:dd.MM.yyyy HH:mm:ss}");
+    }
+
+    private void AddOrderToReceiptUI()
+    {
+        var selectedReceipt = SelectOpenReceipt();
+        if (selectedReceipt == null) return;
+
         var selectedItem = SelectMenuItem();
         if (selectedItem == null) return;
 
@@ -200,6 +219,66 @@ public class ConsoleUI
         }
     }
 
+    private void ChangeOrderStatusUI()
+    {
+        var selectedReceipt = SelectOpenReceipt();
+        if (selectedReceipt == null) return;
+
+        if (selectedReceipt.Orders.Count == 0)
+        {
+            Console.WriteLine("У цьому чеку ще немає замовлень.");
+            return;
+        }
+
+        Console.WriteLine("\nЗамовлення у чеку:");
+        for (int i = 0; i < selectedReceipt.Orders.Count; i++)
+        {
+            var o = selectedReceipt.Orders[i];
+            Console.WriteLine($"{i + 1}. {o.MenuItem.Name} x{o.Quantity} — поточний статус: {FormatStatus(o.Status)}");
+        }
+
+        Console.Write("Оберіть номер замовлення: ");
+        if (!int.TryParse(Console.ReadLine(), out int orderIndex) || orderIndex < 1 || orderIndex > selectedReceipt.Orders.Count)
+        {
+            Console.WriteLine("Невірний номер замовлення.");
+            return;
+        }
+
+        var selectedOrder = selectedReceipt.Orders[orderIndex - 1];
+
+        Console.WriteLine("Оберіть новий статус:");
+        Console.WriteLine("1. Готується");
+        Console.WriteLine("2. Подано");
+        Console.WriteLine("3. Скасовано");
+        Console.Write("Ваш вибір: ");
+
+        OrderStatus? newStatus = Console.ReadLine() switch
+        {
+            "1" => OrderStatus.Preparing,
+            "2" => OrderStatus.Served,
+            "3" => OrderStatus.Cancelled,
+            _ => null
+        };
+
+        if (newStatus == null)
+        {
+            Console.WriteLine("Невірний вибір статусу.");
+            return;
+        }
+
+        _receiptService.ChangeOrderStatus(selectedReceipt.Id, selectedOrder.Id, newStatus.Value);
+        Console.WriteLine($"Статус замовлення «{selectedOrder.MenuItem.Name}» змінено на «{FormatStatus(newStatus.Value)}».");
+    }
+
+    private void CloseReceiptUI()
+    {
+        var selectedReceipt = SelectOpenReceipt();
+        if (selectedReceipt == null) return;
+
+        _receiptService.CloseReceipt(selectedReceipt.Id);
+        Console.WriteLine($"Чек {selectedReceipt.Id} успішно закрито! Підсумкова сума: {selectedReceipt.TotalAmount:F2} грн.");
+    }
+
     private void ShowReceipts()
     {
         var receipts = _receiptService.GetAll();
@@ -212,7 +291,10 @@ public class ConsoleUI
         Console.WriteLine("\n--- УСІ ЧЕКИ ---");
         foreach (var r in receipts)
         {
-            string status = r.IsOpen ? "Відкритий" : "Закритий";
+            string status = r.IsOpen
+                ? "Відкритий"
+                : $"Закритий ({r.ClosedAt:dd.MM.yyyy HH:mm:ss})";
+
             Console.WriteLine($"\nЧек ID: {r.Id} | Статус: {status} | Відкрито: {r.OpenedAt:dd.MM.yyyy HH:mm:ss}");
             if (r.Orders.Count == 0)
             {
@@ -222,10 +304,43 @@ public class ConsoleUI
             {
                 foreach (var o in r.Orders)
                 {
-                    Console.WriteLine($"  - {o.MenuItem.Name} x{o.Quantity} = {o.TotalPrice:F2} грн");
+                    Console.WriteLine($"  - {o.MenuItem.Name} x{o.Quantity} = {o.TotalPrice:F2} грн [{FormatStatus(o.Status)}]");
+                    foreach (var h in o.StatusHistory)
+                    {
+                        Console.WriteLine($"      * {h.ChangedAt:HH:mm:ss} -> {FormatStatus(h.Status)}");
+                    }
                 }
             }
             Console.WriteLine($"  Разом: {r.TotalAmount:F2} грн");
         }
     }
+
+    private void ShowDailyRevenueUI()
+    {
+        Console.Write("Введіть дату у форматі дд.мм.рррр (або натисніть Enter для сьогоднішньої дати): ");
+        string? input = Console.ReadLine();
+
+        DateTime targetDate;
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            targetDate = DateTime.Today;
+        }
+        else if (!DateTime.TryParse(input, out targetDate))
+        {
+            Console.WriteLine("Некоректний формат дати.");
+            return;
+        }
+
+        decimal revenue = _receiptService.CalculateDailyRevenue(targetDate);
+        Console.WriteLine($"Виручка за {targetDate:dd.MM.yyyy} (по закритих чеках): {revenue:F2} грн");
+    }
+
+    private static string FormatStatus(OrderStatus status) => status switch
+    {
+        OrderStatus.Ordered => "Замовлено",
+        OrderStatus.Preparing => "Готується",
+        OrderStatus.Served => "Подано",
+        OrderStatus.Cancelled => "Скасовано",
+        _ => status.ToString()
+    };
 }
