@@ -5,6 +5,8 @@ namespace RestaurantManagement.Presentation;
 
 public class ConsoleUI
 {
+    private readonly AuthService _authService;
+    private readonly AuditService _auditService;
     private readonly MenuService _menuService;
     private readonly TableService _tableService;
     private readonly WaiterService _waiterService;
@@ -12,12 +14,16 @@ public class ConsoleUI
     private readonly ReceiptService _receiptService;
 
     public ConsoleUI(
+        AuthService authService,
+        AuditService auditService,
         MenuService menuService,
         TableService tableService,
         WaiterService waiterService,
         ReservationService reservationService,
         ReceiptService receiptService)
     {
+        _authService = authService;
+        _auditService = auditService;
         _menuService = menuService;
         _tableService = tableService;
         _waiterService = waiterService;
@@ -29,75 +35,217 @@ public class ConsoleUI
     {
         while (true)
         {
-            Console.WriteLine("\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ ХАРЧУВАННЯ (Етап 4) ===");
-            Console.WriteLine("1. Управління меню (CRUD)");
-            Console.WriteLine("2. Управління столиками");
-            Console.WriteLine("3. Управління офіціантами");
-            Console.WriteLine("4. Бронювання столиків");
-            Console.WriteLine("5. Відкрити новий чек (за столиком та офіціантом)");
-            Console.WriteLine("6. Додати замовлення у відкритий чек");
-            Console.WriteLine("7. Змінити статус замовлення");
-            Console.WriteLine("8. Пересадити гостей на інший столик");
-            Console.WriteLine("9. Застосувати знижку до чеку");
-            Console.WriteLine("10. Закрити чек");
-            Console.WriteLine("11. Переглянути всі чеки та історію статусів");
-            Console.WriteLine("12. Аналітика: виручка, офіціанти та популярні страви");
-            Console.WriteLine("0. Вихід");
+            if (_authService.CurrentUser == null)
+            {
+                if (!ShowLoginScreen())
+                    return;
+            }
+
+            ShowMainMenu();
+        }
+    }
+
+    private bool ShowLoginScreen()
+    {
+        Console.WriteLine("\n=== АВТОРИЗАЦІЯ В СИСТЕМІ ЗАКЛАДУ ХАРЧУВАННЯ ===");
+        Console.WriteLine("Тестові облікові записи: admin / admin123 або waiter / 1234");
+        Console.WriteLine("1. Увійти в систему");
+        Console.WriteLine("0. Вийти з програми");
+        Console.Write("Оберіть дію: ");
+
+        string? choice = Console.ReadLine();
+        if (choice == "0")
+            return false;
+
+        if (choice != "1")
+        {
+            Console.WriteLine("Невірний вибір.");
+            return true;
+        }
+
+        Console.Write("Логін: ");
+        string username = Console.ReadLine() ?? "";
+        Console.Write("Пароль: ");
+        string password = Console.ReadLine() ?? "";
+
+        try
+        {
+            var user = _authService.Login(username, password);
+            _auditService.Log(user, "Вхід у систему");
+            Console.WriteLine($"\nВітаємо, {user.FullName}! Ваша роль: {FormatRole(user.Role)}.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Помилка входу: {ex.Message}");
+        }
+
+        return true;
+    }
+
+    private void ShowMainMenu()
+    {
+        var user = _authService.CurrentUser!;
+        bool isAdmin = user.Role == UserRole.Admin;
+
+        Console.WriteLine($"\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ (Етап 5) | Користувач: {user.FullName} [{FormatRole(user.Role)}] ===");
+        Console.WriteLine("1. Переглянути меню");
+        Console.WriteLine("2. Бронювання столиків");
+        Console.WriteLine("3. Відкрити новий чек");
+        Console.WriteLine("4. Додати замовлення у відкритий чек");
+        Console.WriteLine("5. Змінити статус замовлення");
+        Console.WriteLine("6. Пересадити гостей на інший столик");
+        Console.WriteLine("7. Застосувати знижку до чеку");
+        Console.WriteLine("8. Закрити чек");
+        Console.WriteLine("9. Переглянути всі чеки та історію статусів");
+
+        if (isAdmin)
+        {
+            Console.WriteLine("--- Панель Адміністратора ---");
+            Console.WriteLine("10. Управління меню (додавання/редагування/видалення)");
+            Console.WriteLine("11. Управління столиками");
+            Console.WriteLine("12. Управління офіціантами");
+            Console.WriteLine("13. Управління обліковими записами користувачів");
+            Console.WriteLine("14. Аналітика: виручка, офіціанти та популярні страви");
+            Console.WriteLine("15. Журнал дій користувачів (Audit Log)");
+        }
+
+        Console.WriteLine("99. Вийти з облікового запису (Змінити користувача)");
+        Console.WriteLine("0. Завершити роботу програми");
+        Console.Write("Оберіть дію: ");
+
+        string? choice = Console.ReadLine();
+
+        try
+        {
+            switch (choice)
+            {
+                case "1":
+                    ShowMenuItems();
+                    break;
+                case "2":
+                    ManageReservations();
+                    break;
+                case "3":
+                    OpenReceiptUI();
+                    break;
+                case "4":
+                    AddOrderToReceiptUI();
+                    break;
+                case "5":
+                    ChangeOrderStatusUI();
+                    break;
+                case "6":
+                    ChangeReceiptTableUI();
+                    break;
+                case "7":
+                    ApplyDiscountUI();
+                    break;
+                case "8":
+                    CloseReceiptUI();
+                    break;
+                case "9":
+                    ShowReceipts();
+                    break;
+                case "10":
+                    _authService.EnsureAdmin();
+                    ManageMenu();
+                    break;
+                case "11":
+                    _authService.EnsureAdmin();
+                    ManageTables();
+                    break;
+                case "12":
+                    _authService.EnsureAdmin();
+                    ManageWaiters();
+                    break;
+                case "13":
+                    _authService.EnsureAdmin();
+                    ManageUsers();
+                    break;
+                case "14":
+                    _authService.EnsureAdmin();
+                    ShowAnalyticsReportUI();
+                    break;
+                case "15":
+                    _authService.EnsureAdmin();
+                    ShowAuditLogUI();
+                    break;
+                case "99":
+                    _auditService.Log(user, "Вихід із облікового запису");
+                    _authService.Logout();
+                    Console.WriteLine("Ви вийшли з облікового запису.");
+                    break;
+                case "0":
+                    _auditService.Log(user, "Завершення роботи програми");
+                    Environment.Exit(0);
+                    break;
+                default:
+                    Console.WriteLine("Невірний пункт меню або недостатньо прав доступу.");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Помилка: {ex.Message}");
+        }
+    }
+
+    private void ManageUsers()
+    {
+        while (true)
+        {
+            Console.WriteLine("\n--- УПРАВЛІННЯ КОРИСТУВАЧАМИ СИСТЕМИ ---");
+            Console.WriteLine("1. Список користувачів");
+            Console.WriteLine("2. Зареєструвати нового користувача");
+            Console.WriteLine("0. Назад");
             Console.Write("Оберіть дію: ");
 
             string? choice = Console.ReadLine();
+            switch (choice)
+            {
+                case "1":
+                    foreach (var u in _authService.GetAllUsers())
+                    {
+                        Console.WriteLine($"- {u.Username} | {u.FullName} | Роль: {FormatRole(u.Role)}");
+                    }
+                    break;
+                case "2":
+                    Console.Write("Логін: ");
+                    string login = Console.ReadLine() ?? "";
+                    Console.Write("Пароль (мін. 4 символи): ");
+                    string pass = Console.ReadLine() ?? "";
+                    Console.Write("ПІБ: ");
+                    string fullName = Console.ReadLine() ?? "";
+                    Console.WriteLine("Роль: 1 — Офіціант, 2 — Адміністратор");
+                    Console.Write("Оберіть роль: ");
+                    UserRole role = Console.ReadLine() == "2" ? UserRole.Admin : UserRole.Waiter;
 
-            try
-            {
-                switch (choice)
-                {
-                    case "1":
-                        ManageMenu();
-                        break;
-                    case "2":
-                        ManageTables();
-                        break;
-                    case "3":
-                        ManageWaiters();
-                        break;
-                    case "4":
-                        ManageReservations();
-                        break;
-                    case "5":
-                        OpenReceiptUI();
-                        break;
-                    case "6":
-                        AddOrderToReceiptUI();
-                        break;
-                    case "7":
-                        ChangeOrderStatusUI();
-                        break;
-                    case "8":
-                        ChangeReceiptTableUI();
-                        break;
-                    case "9":
-                        ApplyDiscountUI();
-                        break;
-                    case "10":
-                        CloseReceiptUI();
-                        break;
-                    case "11":
-                        ShowReceipts();
-                        break;
-                    case "12":
-                        ShowAnalyticsReportUI();
-                        break;
-                    case "0":
-                        return;
-                    default:
-                        Console.WriteLine("Невірний пункт меню.");
-                        break;
-                }
+                    var created = _authService.RegisterUser(login, pass, fullName, role);
+                    _auditService.Log(_authService.CurrentUser, $"Створено користувача '{created.Username}' ({FormatRole(role)})");
+                    Console.WriteLine($"Користувача '{created.Username}' успішно зареєстровано.");
+                    break;
+                case "0":
+                    return;
+                default:
+                    Console.WriteLine("Невірний пункт.");
+                    break;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Помилка: {ex.Message}");
-            }
+        }
+    }
+
+    private void ShowAuditLogUI()
+    {
+        var logs = _auditService.GetRecent(25);
+        Console.WriteLine("\n=== ОСТАННІ 25 ДІЙ У СИСТЕМІ ===");
+        if (logs.Count == 0)
+        {
+            Console.WriteLine("Записів поки немає.");
+            return;
+        }
+
+        foreach (var entry in logs)
+        {
+            Console.WriteLine($"[{entry.Timestamp:dd.MM.yyyy HH:mm:ss}] {entry.Username} ({entry.Role}): {entry.Action}");
         }
     }
 
@@ -105,7 +253,7 @@ public class ConsoleUI
     {
         while (true)
         {
-            Console.WriteLine("\n--- УПРАВЛІННЯ МЕНЮ ---");
+            Console.WriteLine("\n--- УПРАВЛІННЯ МЕНЮ (АДМІНІСТРАТОР) ---");
             Console.WriteLine("1. Показати меню");
             Console.WriteLine("2. Додати позицію");
             Console.WriteLine("3. Редагувати позицію");
@@ -129,6 +277,7 @@ public class ConsoleUI
                         break;
                     }
                     _menuService.AddItem(name, price);
+                    _auditService.Log(_authService.CurrentUser, $"Додано страву в меню: {name} ({price:F2} грн)");
                     Console.WriteLine("Позицію додано та збережено у файл.");
                     break;
                 case "3":
@@ -144,13 +293,16 @@ public class ConsoleUI
                         break;
                     }
                     _menuService.UpdateItem(itemToEdit.Id, newName, newPrice);
+                    _auditService.Log(_authService.CurrentUser, $"Оновлено страву в меню: {newName} ({newPrice:F2} грн)");
                     Console.WriteLine("Позицію оновлено.");
                     break;
                 case "4":
                     var itemToDelete = SelectMenuItem();
                     if (itemToDelete == null) break;
 
+                    string deletedName = itemToDelete.Name;
                     _menuService.DeleteItem(itemToDelete.Id);
+                    _auditService.Log(_authService.CurrentUser, $"Видалено страву з меню: {deletedName}");
                     Console.WriteLine("Позицію видалено.");
                     break;
                 case "0":
@@ -203,6 +355,7 @@ public class ConsoleUI
                         break;
                     }
                     _tableService.AddTable(number, capacity);
+                    _auditService.Log(_authService.CurrentUser, $"Додано столик №{number} на {capacity} місць");
                     Console.WriteLine($"Столик №{number} додано.");
                     break;
                 case "0":
@@ -244,6 +397,7 @@ public class ConsoleUI
                     Console.Write("ПІБ офіціанта: ");
                     string fullName = Console.ReadLine() ?? "";
                     _waiterService.AddWaiter(fullName);
+                    _auditService.Log(_authService.CurrentUser, $"Додано офіціанта: {fullName}");
                     Console.WriteLine("Офіціанта додано.");
                     break;
                 case "0":
@@ -296,7 +450,7 @@ public class ConsoleUI
                         var allTables = _tableService.GetAll();
                         if (allTables.Count == 0)
                         {
-                            Console.WriteLine("Спочатку додайте столики у розділі 2.");
+                            Console.WriteLine("Спочатку додайте столики у панелі адміністратора.");
                             break;
                         }
 
@@ -340,6 +494,7 @@ public class ConsoleUI
                             startTime,
                             duration);
 
+                        _auditService.Log(_authService.CurrentUser, $"Створено бронь столика №{created.TableNumber} на {created.StartTime:dd.MM.yyyy HH:mm} для {created.CustomerName}");
                         Console.WriteLine($"Бронювання створено! Столик №{created.TableNumber} на {created.StartTime:dd.MM.yyyy HH:mm}–{created.EndTime:HH:mm}.");
                         break;
 
@@ -363,7 +518,9 @@ public class ConsoleUI
                             break;
                         }
 
-                        _reservationService.CancelReservation(activeAll[bIdx - 1].Id);
+                        var targetBooking = activeAll[bIdx - 1];
+                        _reservationService.CancelReservation(targetBooking.Id);
+                        _auditService.Log(_authService.CurrentUser, $"Скасовано бронь столика №{targetBooking.TableNumber} ({targetBooking.CustomerName})");
                         Console.WriteLine("Бронювання скасовано.");
                         break;
 
@@ -422,7 +579,7 @@ public class ConsoleUI
         var freeTables = _tableService.GetFreeTables();
         if (freeTables.Count == 0)
         {
-            Console.WriteLine("Немає вільних столиків. Додайте столик або закрийте один із чеків.");
+            Console.WriteLine("Немає вільних столиків.");
             return null;
         }
 
@@ -447,7 +604,7 @@ public class ConsoleUI
         var waiters = _waiterService.GetAll();
         if (waiters.Count == 0)
         {
-            Console.WriteLine("Список офіціантів порожній. Спочатку додайте офіціанта.");
+            Console.WriteLine("Список офіціантів порожній.");
             return null;
         }
 
@@ -502,6 +659,7 @@ public class ConsoleUI
         if (waiter == null) return;
 
         var receipt = _receiptService.OpenReceipt(table, waiter);
+        _auditService.Log(_authService.CurrentUser, $"Відкрито чек для столика №{receipt.TableNumber} (офіціант: {receipt.WaiterName})");
         Console.WriteLine($"Відкрито чек! Столик №{receipt.TableNumber} | Офіціант: {receipt.WaiterName} | ID: {receipt.Id}");
     }
 
@@ -510,11 +668,13 @@ public class ConsoleUI
         var receipt = SelectOpenReceipt();
         if (receipt == null) return;
 
-        Console.WriteLine($"Поточний столик: №{receipt.TableNumber}. Оберіть новий вільний столик:");
+        int oldTableNum = receipt.TableNumber;
+        Console.WriteLine($"Поточний столик: №{oldTableNum}. Оберіть новий вільний столик:");
         var newTable = SelectFreeTable();
         if (newTable == null) return;
 
         _receiptService.ChangeReceiptTable(receipt.Id, newTable);
+        _auditService.Log(_authService.CurrentUser, $"Пересаджено гостей зі столика №{oldTableNum} на столик №{newTable.Number}");
         Console.WriteLine($"Чек перенесено на столик №{newTable.Number}.");
     }
 
@@ -531,6 +691,7 @@ public class ConsoleUI
         }
 
         _receiptService.ApplyDiscount(receipt.Id, discount);
+        _auditService.Log(_authService.CurrentUser, $"Застосовано знижку {discount}% до чеку столика №{receipt.TableNumber}");
         Console.WriteLine($"Знижку {discount}% застосовано. Нова сума до сплати: {receipt.TotalAmount:F2} грн.");
     }
 
@@ -551,6 +712,7 @@ public class ConsoleUI
 
         if (_receiptService.AddOrderToReceipt(selectedReceipt.Id, selectedItem, quantity))
         {
+            _auditService.Log(_authService.CurrentUser, $"Додано замовлення: {selectedItem.Name} x{quantity} (Столик №{selectedReceipt.TableNumber})");
             Console.WriteLine($"Додано: {selectedItem.Name} x{quantity} у чек (Столик №{selectedReceipt.TableNumber}).");
         }
     }
@@ -603,6 +765,7 @@ public class ConsoleUI
         }
 
         _receiptService.ChangeOrderStatus(selectedReceipt.Id, selectedOrder.Id, newStatus.Value);
+        _auditService.Log(_authService.CurrentUser, $"Змінено статус '{selectedOrder.MenuItem.Name}' на '{FormatStatus(newStatus.Value)}' (Столик №{selectedReceipt.TableNumber})");
         Console.WriteLine($"Статус замовлення «{selectedOrder.MenuItem.Name}» змінено на «{FormatStatus(newStatus.Value)}».");
     }
 
@@ -612,6 +775,7 @@ public class ConsoleUI
         if (selectedReceipt == null) return;
 
         _receiptService.CloseReceipt(selectedReceipt.Id);
+        _auditService.Log(_authService.CurrentUser, $"Закрито чек столика №{selectedReceipt.TableNumber} на суму {selectedReceipt.TotalAmount:F2} грн");
         Console.WriteLine($"Чек (Столик №{selectedReceipt.TableNumber}) закрито! Підсумкова сума: {selectedReceipt.TotalAmount:F2} грн. Столик знову вільний.");
     }
 
@@ -709,5 +873,12 @@ public class ConsoleUI
         OrderStatus.Served => "Подано",
         OrderStatus.Cancelled => "Скасовано",
         _ => status.ToString()
+    };
+
+    private static string FormatRole(UserRole role) => role switch
+    {
+        UserRole.Admin => "Адміністратор",
+        UserRole.Waiter => "Офіціант",
+        _ => role.ToString()
     };
 }
