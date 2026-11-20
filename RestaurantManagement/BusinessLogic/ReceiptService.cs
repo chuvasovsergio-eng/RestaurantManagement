@@ -1,4 +1,5 @@
-﻿using RestaurantManagement.Models;
+﻿using System.Text;
+using RestaurantManagement.Models;
 using RestaurantManagement.Persistence;
 
 namespace RestaurantManagement.BusinessLogic;
@@ -73,7 +74,7 @@ public class ReceiptService
         _storage.Save(_receipts);
     }
 
-    public bool AddOrderToReceipt(Guid receiptId, MenuItem menuItem, int quantity)
+    public bool AddOrderToReceipt(Guid receiptId, MenuItem menuItem, int quantity, string kitchenNote = "")
     {
         var receipt = GetById(receiptId) ?? throw new ArgumentException("Чек не знайдено.");
         if (!receipt.IsOpen)
@@ -85,9 +86,11 @@ public class ReceiptService
             {
                 Id = menuItem.Id,
                 Name = menuItem.Name,
-                Price = menuItem.Price
+                Price = menuItem.Price,
+                Category = menuItem.Category
             },
-            Quantity = quantity
+            Quantity = quantity,
+            KitchenNote = kitchenNote.Trim()
         };
 
         receipt.Orders.Add(order);
@@ -157,5 +160,31 @@ public class ReceiptService
             .OrderByDescending(x => x.TotalQuantity)
             .ThenByDescending(x => x.TotalSales)
             .ToList();
+    }
+
+    public string ExportDailyReportToFile(DateTime date)
+    {
+        var closedToday = _receipts
+            .Where(r => !r.IsOpen && r.ClosedAt.HasValue && r.ClosedAt.Value.Date == date.Date)
+            .ToList();
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"==================================================");
+        sb.AppendLine($"ФІНАНСОВИЙ ЗВІТ ЗАКЛАДУ ХАРЧУВАННЯ ЗА {date:dd.MM.yyyy}");
+        sb.AppendLine($"Сформовано: {DateTime.Now:dd.MM.yyyy HH:mm:ss}");
+        sb.AppendLine($"==================================================");
+        sb.AppendLine($"Кількість закритих чеків: {closedToday.Count}");
+        sb.AppendLine($"Загальна виручка: {closedToday.Sum(r => r.TotalAmount):F2} грн");
+        sb.AppendLine($"--------------------------------------------------");
+
+        foreach (var r in closedToday)
+        {
+            sb.AppendLine($"Чек #{r.Id.ToString()[..8]} | Столик №{r.TableNumber} | Офіціант: {r.WaiterName} | Сума: {r.TotalAmount:F2} грн (знижка {r.DiscountPercent}%)");
+        }
+
+        string fileName = $"daily_report_{date:yyyy-MM-dd}.txt";
+        string fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);
+        File.WriteAllText(fullPath, sb.ToString(), Encoding.UTF8);
+        return fullPath;
     }
 }

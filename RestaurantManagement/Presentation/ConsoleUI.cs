@@ -87,11 +87,11 @@ public class ConsoleUI
         var user = _authService.CurrentUser!;
         bool isAdmin = user.Role == UserRole.Admin;
 
-        Console.WriteLine($"\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ (Етап 5) | Користувач: {user.FullName} [{FormatRole(user.Role)}] ===");
-        Console.WriteLine("1. Переглянути меню");
+        Console.WriteLine($"\n=== СИСТЕМА УПРАВЛІННЯ ЗАКЛАДОМ (Етап 6) | Користувач: {user.FullName} [{FormatRole(user.Role)}] ===");
+        Console.WriteLine("1. Переглянути меню (з фільтром за категоріями та пошуком)");
         Console.WriteLine("2. Бронювання столиків");
         Console.WriteLine("3. Відкрити новий чек");
-        Console.WriteLine("4. Додати замовлення у відкритий чек");
+        Console.WriteLine("4. Додати замовлення у відкритий чек (з коментарем на кухню)");
         Console.WriteLine("5. Змінити статус замовлення");
         Console.WriteLine("6. Пересадити гостей на інший столик");
         Console.WriteLine("7. Застосувати знижку до чеку");
@@ -105,7 +105,7 @@ public class ConsoleUI
             Console.WriteLine("11. Управління столиками");
             Console.WriteLine("12. Управління офіціантами");
             Console.WriteLine("13. Управління обліковими записами користувачів");
-            Console.WriteLine("14. Аналітика: виручка, офіціанти та популярні страви");
+            Console.WriteLine("14. Аналітика: виручка, офіціанти, популярні страви та експорт звіту");
             Console.WriteLine("15. Журнал дій користувачів (Audit Log)");
         }
 
@@ -120,7 +120,7 @@ public class ConsoleUI
             switch (choice)
             {
                 case "1":
-                    ShowMenuItems();
+                    BrowseMenuUI();
                     break;
                 case "2":
                     ManageReservations();
@@ -188,6 +188,77 @@ public class ConsoleUI
         {
             Console.WriteLine($"Помилка: {ex.Message}");
         }
+    }
+
+    private void BrowseMenuUI()
+    {
+        Console.WriteLine("\n--- ПЕРЕГЛЯД МЕНЮ ---");
+        Console.WriteLine("1. Показати все меню");
+        Console.WriteLine("2. Фільтр за категорією");
+        Console.WriteLine("3. Пошук страви за назвою");
+        Console.Write("Оберіть варіант: ");
+
+        string? choice = Console.ReadLine();
+        switch (choice)
+        {
+            case "1":
+                ShowMenuItems();
+                break;
+            case "2":
+                var cat = SelectCategory();
+                if (cat == null) return;
+                var filtered = _menuService.GetByCategory(cat.Value);
+                if (filtered.Count == 0)
+                {
+                    Console.WriteLine($"У категорії «{FormatCategory(cat.Value)}» поки немає страв.");
+                    return;
+                }
+                Console.WriteLine($"\nКатегорія «{FormatCategory(cat.Value)}»:");
+                for (int i = 0; i < filtered.Count; i++)
+                {
+                    Console.WriteLine($"{i + 1}. {filtered[i].Name} — {filtered[i].Price:F2} грн");
+                }
+                break;
+            case "3":
+                Console.Write("Введіть частину назви страви: ");
+                string query = Console.ReadLine() ?? "";
+                var found = _menuService.SearchByName(query);
+                if (found.Count == 0)
+                {
+                    Console.WriteLine("Нічого не знайдено.");
+                    return;
+                }
+                Console.WriteLine("\nРезультати пошуку:");
+                for (int i = 0; i < found.Count; i++)
+                {
+                    Console.WriteLine($"{i + 1}. [{FormatCategory(found[i].Category)}] {found[i].Name} — {found[i].Price:F2} грн");
+                }
+                break;
+            default:
+                Console.WriteLine("Невірний вибір.");
+                break;
+        }
+    }
+
+    private static MenuCategory? SelectCategory()
+    {
+        Console.WriteLine("Оберіть категорію:");
+        Console.WriteLine("1. Закуски");
+        Console.WriteLine("2. Перші страви");
+        Console.WriteLine("3. Основні страви");
+        Console.WriteLine("4. Десерти");
+        Console.WriteLine("5. Напої");
+        Console.Write("Ваш вибір: ");
+
+        return Console.ReadLine() switch
+        {
+            "1" => MenuCategory.Starters,
+            "2" => MenuCategory.Soups,
+            "3" => MenuCategory.MainCourses,
+            "4" => MenuCategory.Desserts,
+            "5" => MenuCategory.Drinks,
+            _ => null
+        };
     }
 
     private void ManageUsers()
@@ -276,8 +347,9 @@ public class ConsoleUI
                         Console.WriteLine("Некоректний формат ціни.");
                         break;
                     }
-                    _menuService.AddItem(name, price);
-                    _auditService.Log(_authService.CurrentUser, $"Додано страву в меню: {name} ({price:F2} грн)");
+                    var cat = SelectCategory() ?? MenuCategory.MainCourses;
+                    _menuService.AddItem(name, price, cat);
+                    _auditService.Log(_authService.CurrentUser, $"Додано страву в меню: {name} ({price:F2} грн, {FormatCategory(cat)})");
                     Console.WriteLine("Позицію додано та збережено у файл.");
                     break;
                 case "3":
@@ -292,7 +364,8 @@ public class ConsoleUI
                         Console.WriteLine("Некоректний формат ціни.");
                         break;
                     }
-                    _menuService.UpdateItem(itemToEdit.Id, newName, newPrice);
+                    var newCat = SelectCategory() ?? itemToEdit.Category;
+                    _menuService.UpdateItem(itemToEdit.Id, newName, newPrice, newCat);
                     _auditService.Log(_authService.CurrentUser, $"Оновлено страву в меню: {newName} ({newPrice:F2} грн)");
                     Console.WriteLine("Позицію оновлено.");
                     break;
@@ -550,7 +623,7 @@ public class ConsoleUI
         Console.WriteLine("\nСписок страв:");
         for (int i = 0; i < items.Count; i++)
         {
-            Console.WriteLine($"{i + 1}. {items[i].Name} — {items[i].Price:F2} грн");
+            Console.WriteLine($"{i + 1}. [{FormatCategory(items[i].Category)}] {items[i].Name} — {items[i].Price:F2} грн");
         }
     }
 
@@ -710,7 +783,10 @@ public class ConsoleUI
             return;
         }
 
-        if (_receiptService.AddOrderToReceipt(selectedReceipt.Id, selectedItem, quantity))
+        Console.Write("Коментар для кухні (необов'язково, натисніть Enter щоб пропустити): ");
+        string note = Console.ReadLine() ?? "";
+
+        if (_receiptService.AddOrderToReceipt(selectedReceipt.Id, selectedItem, quantity, note))
         {
             _auditService.Log(_authService.CurrentUser, $"Додано замовлення: {selectedItem.Name} x{quantity} (Столик №{selectedReceipt.TableNumber})");
             Console.WriteLine($"Додано: {selectedItem.Name} x{quantity} у чек (Столик №{selectedReceipt.TableNumber}).");
@@ -732,7 +808,8 @@ public class ConsoleUI
         for (int i = 0; i < selectedReceipt.Orders.Count; i++)
         {
             var o = selectedReceipt.Orders[i];
-            Console.WriteLine($"{i + 1}. {o.MenuItem.Name} x{o.Quantity} — поточний статус: {FormatStatus(o.Status)}");
+            string noteInfo = string.IsNullOrWhiteSpace(o.KitchenNote) ? "" : $" (Примітка: {o.KitchenNote})";
+            Console.WriteLine($"{i + 1}. {o.MenuItem.Name} x{o.Quantity}{noteInfo} — поточний статус: {FormatStatus(o.Status)}");
         }
 
         Console.Write("Оберіть номер замовлення: ");
@@ -805,7 +882,8 @@ public class ConsoleUI
             {
                 foreach (var o in r.Orders)
                 {
-                    Console.WriteLine($"  - {o.MenuItem.Name} x{o.Quantity} = {o.TotalPrice:F2} грн [{FormatStatus(o.Status)}]");
+                    string note = string.IsNullOrWhiteSpace(o.KitchenNote) ? "" : $" | Коментар: «{o.KitchenNote}»";
+                    Console.WriteLine($"  - {o.MenuItem.Name} x{o.Quantity} = {o.TotalPrice:F2} грн [{FormatStatus(o.Status)}]{note}");
                     foreach (var h in o.StatusHistory)
                     {
                         Console.WriteLine($"      * {h.ChangedAt:HH:mm:ss} -> {FormatStatus(h.Status)}");
@@ -864,6 +942,14 @@ public class ConsoleUI
                 Console.WriteLine($"{i + 1}. {popular[i].DishName} — замовлено {popular[i].TotalQuantity} порц. (виручка: {popular[i].TotalSales:F2} грн)");
             }
         }
+
+        Console.Write("\nЗберегти цей звіт у текстовий файл? (y/n): ");
+        if (Console.ReadLine()?.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            string savedPath = _receiptService.ExportDailyReportToFile(targetDate);
+            _auditService.Log(_authService.CurrentUser, $"Експортовано фінансовий звіт за {targetDate:dd.MM.yyyy}");
+            Console.WriteLine($"Звіт збережено у файл: {savedPath}");
+        }
     }
 
     private static string FormatStatus(OrderStatus status) => status switch
@@ -880,5 +966,15 @@ public class ConsoleUI
         UserRole.Admin => "Адміністратор",
         UserRole.Waiter => "Офіціант",
         _ => role.ToString()
+    };
+
+    private static string FormatCategory(MenuCategory category) => category switch
+    {
+        MenuCategory.Starters => "Закуски",
+        MenuCategory.Soups => "Перші страви",
+        MenuCategory.MainCourses => "Основні страви",
+        MenuCategory.Desserts => "Десерти",
+        MenuCategory.Drinks => "Напої",
+        _ => category.ToString()
     };
 }

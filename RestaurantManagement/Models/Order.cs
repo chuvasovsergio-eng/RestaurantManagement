@@ -18,6 +18,7 @@ public class Order
         }
     }
 
+    public string KitchenNote { get; set; } = string.Empty;
     public OrderStatus Status { get; set; } = OrderStatus.Ordered;
     public List<OrderStatusHistory> StatusHistory { get; set; } = new();
 

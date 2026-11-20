@@ -13,8 +13,8 @@ public class MenuItem
         set
         {
             if (string.IsNullOrWhiteSpace(value))
-                throw new ArgumentException("Название блюда не может быть пустым.");
-            _name = value;
+                throw new ArgumentException("Назва страви не може бути порожньою.");
+            _name = value.Trim();
         }
     }
 
@@ -24,8 +24,10 @@ public class MenuItem
         set
         {
             if (value <= 0)
-                throw new ArgumentException("Цена должна быть больше 0.");
+                throw new ArgumentException("Ціна має бути більшою за 0.");
             _price = value;
         }
     }
+
+    public MenuCategory Category { get; set; } = MenuCategory.MainCourses;
 }
