@@ -63,6 +63,16 @@ public class ReceiptService
         _storage.Save(_receipts);
     }
 
+    public void ApplyDiscount(Guid receiptId, decimal discountPercent)
+    {
+        var receipt = GetById(receiptId) ?? throw new ArgumentException("Чек не знайдено.");
+        if (!receipt.IsOpen)
+            throw new InvalidOperationException("Неможливо застосувати знижку до закритого чеку.");
+
+        receipt.DiscountPercent = discountPercent;
+        _storage.Save(_receipts);
+    }
+
     public bool AddOrderToReceipt(Guid receiptId, MenuItem menuItem, int quantity)
     {
         var receipt = GetById(receiptId) ?? throw new ArgumentException("Чек не знайдено.");
@@ -130,5 +140,22 @@ public class ReceiptService
             .ToList();
 
         return (waiterReceipts.Count, waiterReceipts.Sum(r => r.TotalAmount));
+    }
+
+    public List<(string DishName, int TotalQuantity, decimal TotalSales)> GetPopularDishes()
+    {
+        return _receipts
+            .Where(r => !r.IsOpen)
+            .SelectMany(r => r.Orders)
+            .Where(o => o.Status == OrderStatus.Served)
+            .GroupBy(o => o.MenuItem.Name)
+            .Select(g => (
+                DishName: g.Key,
+                TotalQuantity: g.Sum(x => x.Quantity),
+                TotalSales: g.Sum(x => x.TotalPrice)
+            ))
+            .OrderByDescending(x => x.TotalQuantity)
+            .ThenByDescending(x => x.TotalSales)
+            .ToList();
     }
 }
